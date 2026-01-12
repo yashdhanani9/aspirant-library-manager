@@ -8,7 +8,12 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+    origin: ['https://aspirant-library.vercel.app', 'http://localhost:3000'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
 app.use(express.json());
 
 // Cloudinary Config
@@ -30,31 +35,35 @@ const pool = new Pool({
 // Helper: Snake to Camel Case
 const snakeToCamel = (s) => {
     if (!s) return null;
-    return {
-        id: s.id,
-        fullName: s.full_name,
-        // ... (keep all matching fields)
-        mobile: s.mobile,
-        email: s.email,
-        password: s.password,
-        address: s.address,
-        parentName: s.parent_name,
-        parentMobile: s.parent_mobile,
-        seatNumber: s.seat_number,
-        lockerRequired: s.locker_required,
-        planType: s.plan_type,
-        duration: s.duration,
-        startDate: s.start_date,
-        endDate: s.end_date,
-        amountPaid: s.amount_paid,
-        assignedSlots: s.assigned_slots || [],
-        isActive: s.is_active,
-        photoUrl: s.photo_url,
-        idProofUrl: s.id_proof_url,
-        idProofType: s.id_proof_type, // Fixed: Was missing
-        gender: s.gender,
-        paymentMode: s.payment_mode
-    };
+    try {
+        return {
+            id: s.id || '',
+            fullName: s.full_name || '',
+            mobile: s.mobile || '',
+            email: s.email || '',
+            password: s.password || '',
+            address: s.address || '',
+            parentName: s.parent_name || '',
+            parentMobile: s.parent_mobile || '',
+            seatNumber: s.seat_number || null,
+            lockerRequired: s.locker_required || false,
+            planType: s.plan_type || '',
+            duration: s.duration || '',
+            startDate: s.start_date || null,
+            endDate: s.end_date || null,
+            amountPaid: s.amount_paid || 0,
+            assignedSlots: s.assigned_slots || [],
+            isActive: s.is_active || false,
+            photoUrl: s.photo_url || '',
+            idProofUrl: s.id_proof_url || '',
+            idProofType: s.id_proof_type || '',
+            gender: s.gender || '',
+            paymentMode: s.payment_mode || 'CASH'
+        };
+    } catch (e) {
+        console.error("Error in snakeToCamel:", e, s);
+        return null;
+    }
 };
 
 // ...
@@ -153,7 +162,8 @@ app.post('/api/login', async (req, res) => {
             res.status(401).json({ error: 'Invalid Credentials' });
         }
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Login Error:", err);
+        res.status(500).json({ error: "Internal Server Error during login", details: err.message });
     }
 });
 
@@ -173,8 +183,8 @@ app.get('/api/seats', async (req, res) => {
         }
         res.json(seats);
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: err.message });
+        console.error("Get Seats Error:", err);
+        res.status(500).json({ error: "Internal Server Error fetching seats", details: err.message });
     }
 });
 
