@@ -1,0 +1,5 @@
+{
+  "name": "Aspirant Library Manager",
+  "description": "A private library management system with Admin and Student portals, seat management, and locker tracking.",
+  "requestFramePermissions": []
+}

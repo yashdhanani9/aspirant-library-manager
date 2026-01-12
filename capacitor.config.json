@@ -1,0 +1,18 @@
+{
+  "appId": "com.aspirant.library",
+  "appName": "Aspirant Library",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#84cc16",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    }
+  }
+}
