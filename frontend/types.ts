@@ -24,6 +24,12 @@ export interface TimeSlot {
   time: string;
 }
 
+export enum PaymentMode {
+  CASH = 'CASH',
+  ONLINE = 'ONLINE',
+  PENDING = 'PENDING'
+}
+
 export interface Student {
   id: string;
   fullName: string;
@@ -43,8 +49,12 @@ export interface Student {
   startDate: string;
   endDate: string;
   amountPaid: number;
+  paymentMode?: PaymentMode; // New
   assignedSlots: string[]; // IDs of TimeSlots
   isActive: boolean;
+  gender?: 'Male' | 'Female' | 'Other';
+  lastModifiedBy?: string; // Admin ID who last edited
+  lastModifiedAt?: string; // ISO timestamp of last edit
 }
 
 export interface AdmissionRequest {
@@ -74,6 +84,7 @@ export interface Transaction {
   date: string; // ISO Date string
   planType: PlanType;
   duration: PlanDuration;
+  paymentMode?: PaymentMode; // New
 }
 
 export interface Seat {
@@ -92,4 +103,5 @@ export interface GlobalAnnouncement {
   message: string;
   isActive: boolean;
   updatedAt: string;
+  type: 'ALERT' | 'NOTIFICATION';
 }

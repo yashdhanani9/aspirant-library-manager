@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserRole, Student, Seat, WifiNetwork, GlobalAnnouncement, AdmissionRequest } from './types';
+import { UserRole, Student, Seat, WifiNetwork, GlobalAnnouncement, AdmissionRequest, Transaction } from './types';
 import { MockService } from './services/mockDatabase';
+import { ApiService } from './services/api';
+import { TOTAL_SEATS } from './constants';
+
 import { SeatGrid } from './components/SeatGrid';
 import { StudentModal } from './components/StudentModal';
 import { RevenueChart } from './components/RevenueChart';
@@ -9,12 +12,13 @@ import { AdmissionForm } from './components/AdmissionForm';
 import { LegalModal } from './components/LegalDocs';
 import { PortalDetails } from './components/PortalDetails';
 import { InstallBanner } from './components/InstallBanner';
+import { DocumentViewerModal } from './components/DocumentViewerModal';
 import { CONFIG } from './config';
 import {
     LogOut, LayoutGrid, Users, DollarSign, Settings, Lock,
     TrendingUp, Wifi, Bell, Trash2, Plus, AlertTriangle,
     Menu, Search, ChevronRight, BookOpen, UserCircle, Eye, EyeOff, FileText, CheckCircle, Hand,
-    MapPin, Phone, Mail, User, Edit, Camera, Clock, Database, Download, Upload, Shield, Terminal, RefreshCw, X, Info, Smartphone, Key
+    MapPin, Phone, Mail, User, Edit, Camera, Clock, Database, Download, Upload, Shield, Terminal, RefreshCw, X, Info, Smartphone, Key, MessageCircle
 } from 'lucide-react';
 
 const SESSION_KEY = 'ASPIRANT_LIB_SESSION';
@@ -53,6 +57,12 @@ const App: React.FC = () => {
     const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+    // Search & Filter State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterPaymentStatus, setFilterPaymentStatus] = useState<string>('ALL');
+    const [filterPlanType, setFilterPlanType] = useState<string>('ALL');
+    const [filterActiveStatus, setFilterActiveStatus] = useState<string>('ALL');
+
     // Responsive Sidebar State
     const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
 
@@ -61,6 +71,8 @@ const App: React.FC = () => {
     const [globalAnnouncement, setGlobalAnnouncement] = useState<GlobalAnnouncement>({ message: '', isActive: false, updatedAt: '' });
     const [admissionRequests, setAdmissionRequests] = useState<AdmissionRequest[]>([]);
     const [expiringStudents, setExpiringStudents] = useState<Student[]>([]);
+    const [studentsList, setStudentsList] = useState<Student[]>([]);
+    const [transactionsList, setTransactionsList] = useState<Transaction[]>([]);
 
     // Pending Admission State (Workflow connection)
     const [pendingAdmissionId, setPendingAdmissionId] = useState<string | null>(null);
@@ -69,6 +81,7 @@ const App: React.FC = () => {
     const [newWifiSSID, setNewWifiSSID] = useState('');
     const [newWifiPass, setNewWifiPass] = useState('');
     const [announcementMsg, setAnnouncementMsg] = useState('');
+    const [announcementType, setAnnouncementType] = useState<'ALERT' | 'NOTIFICATION'>('ALERT');
     const fileInputImportRef = useRef<HTMLInputElement>(null);
 
     // Raw Editor State
@@ -138,18 +151,31 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        setSeats(MockService.getSeatsStatus());
-        setWifiList(MockService.getWifiNetworks());
-        const ann = MockService.getAnnouncement();
-        setGlobalAnnouncement(ann);
-        if (ann.message) setAnnouncementMsg(ann.message);
-        setAdmissionRequests(MockService.getAdmissionRequests());
+        const loadData = async () => {
+            try {
+                const seatsData = await ApiService.getSeatsStatus();
+                setSeats(seatsData);
 
-        // Load Expiring Students
-        if (currentUser?.role === UserRole.ADMIN) {
-            setExpiringStudents(MockService.getExpiringStudents());
-        }
+                const wifiData = await ApiService.getWifiNetworks();
+                setWifiList(wifiData);
+
+                const annData = await ApiService.getAnnouncement();
+                setGlobalAnnouncement(annData);
+                if (annData.message) setAnnouncementMsg(annData.message);
+
+                const studData = await ApiService.getAllStudents();
+                setStudentsList(studData);
+
+                const txData = await ApiService.getTransactions();
+                setTransactionsList(txData);
+
+            } catch (e) {
+                console.error("Failed to load live data", e);
+            }
+        };
+        loadData();
     }, [refreshTrigger, currentUser]);
+
 
     // Install Prompt Listener
     useEffect(() => {
@@ -174,20 +200,23 @@ const App: React.FC = () => {
         }
     };
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        const result = MockService.login(loginMobile, loginPass);
-        if (result) {
-            setCurrentUser(result);
-            localStorage.setItem(SESSION_KEY, JSON.stringify(result));
-            setLoginError('');
-            setLoginMobile('');
-            setLoginPass('');
-            setActiveTab('DASHBOARD');
-        } else {
-            setLoginError('Invalid credentials. Contact Admin if you forgot your password.');
+        try {
+            const result = await ApiService.login(loginMobile, loginPass);
+            if (result) {
+                setCurrentUser(result);
+                localStorage.setItem(SESSION_KEY, JSON.stringify(result));
+                setLoginError('');
+                setLoginMobile('');
+                setLoginPass('');
+                setActiveTab('DASHBOARD');
+            }
+        } catch (err) {
+            setLoginError('Invalid credentials or Server Error.');
         }
     };
+
 
     const handleLogout = () => {
         setCurrentUser(null);
@@ -198,25 +227,34 @@ const App: React.FC = () => {
     const forceUpdate = () => setRefreshTrigger(prev => prev + 1);
 
     // --- Handlers ---
-    const handleAddWifi = (e: React.FormEvent) => {
+    const handleAddWifi = async (e: React.FormEvent) => {
         e.preventDefault();
         if (newWifiSSID && newWifiPass) {
-            MockService.addWifiNetwork(newWifiSSID, newWifiPass);
-            setNewWifiSSID('');
-            setNewWifiPass('');
-            forceUpdate();
+            try {
+                await ApiService.addWifiNetwork(newWifiSSID, newWifiPass);
+                setNewWifiSSID('');
+                setNewWifiPass('');
+                forceUpdate(); // Re-fetch
+            } catch (e) {
+                alert("Failed to save network");
+            }
         }
     };
 
-    const handleDeleteWifi = (id: string) => {
-        MockService.deleteWifiNetwork(id);
-        forceUpdate();
+    const handleDeleteWifi = async (id: string) => {
+        if (!confirm("Remove this network?")) return;
+        try {
+            await ApiService.deleteWifiNetwork(id);
+            forceUpdate();
+        } catch (e) {
+            alert("Failed to delete");
+        }
     };
 
     const handleUpdateAnnouncement = () => {
-        MockService.setAnnouncement(announcementMsg, true);
+        MockService.setAnnouncement(announcementMsg, true, announcementType);
         forceUpdate();
-        alert("Emergency Notification Sent to all Students.");
+        alert(`${announcementType === 'ALERT' ? 'Emergency Alert' : 'Notification'} sent to all students.`);
     };
 
     const handleClearAnnouncement = () => {
@@ -417,24 +455,7 @@ const App: React.FC = () => {
                                     Access Portal
                                 </button>
 
-                                {/* Demo Credentials Box */}
-                                <div className="mt-4 bg-gray-50 p-4 rounded-2xl border border-gray-200 text-xs text-gray-500">
-                                    <div className="flex items-center gap-2 mb-2 text-gray-400 font-bold uppercase tracking-wider">
-                                        <Key size={12} /> Demo Credentials
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <span className="font-bold text-gray-800 block mb-1">Student</span>
-                                            <code className="bg-white px-2 py-1 rounded border border-gray-200 block text-[10px] text-gray-600 font-mono">9876543210</code>
-                                            <code className="bg-white px-2 py-1 rounded border border-gray-200 block text-[10px] text-gray-600 font-mono mt-1">password123</code>
-                                        </div>
-                                        <div>
-                                            <span className="font-bold text-gray-800 block mb-1">Admin</span>
-                                            <code className="bg-white px-2 py-1 rounded border border-gray-200 block text-[10px] text-gray-600 font-mono">admin</code>
-                                            <code className="bg-white px-2 py-1 rounded border border-gray-200 block text-[10px] text-gray-600 font-mono mt-1">admin</code>
-                                        </div>
-                                    </div>
-                                </div>
+
 
                                 <div className="text-center pt-2">
                                     <button type="button" onClick={() => setShowAdmissionForm(true)} className="text-teal-600 font-bold hover:underline text-sm">
@@ -451,7 +472,7 @@ const App: React.FC = () => {
                                     <button onClick={() => setLegalModalType('PRIVACY')} className="hover:text-gray-600">Privacy Policy</button>
                                 </div>
                                 <div className="text-[10px] text-gray-300 font-bold tracking-widest uppercase">
-                                    Made by {CONFIG.APP_NAME} v{CONFIG.VERSION}
+                                    Made by Appygrowth v{CONFIG.VERSION}
                                 </div>
                             </div>
                         </div>
@@ -464,10 +485,21 @@ const App: React.FC = () => {
     // --- DATA PREP ---
     const isAdmin = currentUser.role === UserRole.ADMIN;
     const studentData = !isAdmin ? currentUser.user! : null;
-    const allStudents = MockService.getAllStudents();
-    const transactions = MockService.getTransactions();
+    const allStudents = studentsList; // Use live data
+    const transactions = transactionsList; // Use live data
     const totalRevenue = transactions.reduce((acc, curr) => acc + curr.amount, 0);
     const activeStudents = allStudents.filter(s => s.isActive).length;
+
+    // Seat Stats Calculation
+    const seatStats = seats.reduce((acc, seat) => {
+        const slotsTaken = new Set<string>();
+        seat.occupants.forEach(s => s.assignedSlots.forEach(slot => slotsTaken.add(slot)));
+
+        if (slotsTaken.size === 0) acc.available++;
+        else if (slotsTaken.size >= 4) acc.occupied++;
+        else acc.partial++;
+        return acc;
+    }, { available: 0, partial: 0, occupied: 0 });
 
     // Student Expiry Check
     let expiryAlert = null;
@@ -614,17 +646,11 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Emergency Banner (Small) */}
-                        {globalAnnouncement.isActive && (
-                            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-red-100 text-red-600 rounded-full text-xs font-bold animate-pulse shadow-sm border border-red-200">
-                                <Bell size={14} className="fill-red-600" /> {globalAnnouncement.message}
-                            </div>
-                        )}
                         <div className="w-10 h-10 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center text-gray-400 hover:text-teal-500 transition-colors cursor-pointer relative">
                             <Bell size={20} />
-                            {admissionRequests.length > 0 && isAdmin && (
+                            {(admissionRequests.length > 0 && isAdmin) || (globalAnnouncement.isActive && globalAnnouncement.message) ? (
                                 <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></div>
-                            )}
+                            ) : null}
                         </div>
                     </div>
                 </header>
@@ -692,6 +718,26 @@ const App: React.FC = () => {
                         </div>
                     )}
 
+                    {/* --- GLOBAL ANNOUNCEMENT (Student View) --- */}
+                    {activeTab === 'DASHBOARD' && !isAdmin && globalAnnouncement && globalAnnouncement.isActive && (
+                        <div className={`mb-8 p-6 rounded-2xl shadow-lg flex items-start gap-4 animate-fade-in ${globalAnnouncement.type === 'ALERT' ? 'bg-red-50 border-l-8 border-red-500 shadow-red-100' : 'bg-blue-50 border-l-8 border-blue-500 shadow-blue-100'}`}>
+                            <div className={`p-3 rounded-xl ${globalAnnouncement.type === 'ALERT' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                <Bell size={24} />
+                            </div>
+                            <div>
+                                <h3 className={`font-bold text-lg ${globalAnnouncement.type === 'ALERT' ? 'text-red-800' : 'text-blue-800'}`}>
+                                    {globalAnnouncement.type === 'ALERT' ? 'Important Alert' : 'New Notification'}
+                                </h3>
+                                <p className={`mt-1 font-medium ${globalAnnouncement.type === 'ALERT' ? 'text-red-600' : 'text-blue-600'}`}>
+                                    {globalAnnouncement.message}
+                                </p>
+                                <p className="text-xs mt-2 opacity-60 font-bold uppercase tracking-widest">
+                                    {new Date(globalAnnouncement.updatedAt).toLocaleDateString()}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* CONTENT SWITCHER */}
                     <div className="space-y-8">
 
@@ -714,9 +760,24 @@ const App: React.FC = () => {
                                                 <div className="w-16 h-16 rounded-3xl bg-cyan-50 text-cyan-600 flex items-center justify-center shadow-inner">
                                                     <LayoutGrid size={32} />
                                                 </div>
-                                                <div>
-                                                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Occupied Seats</p>
-                                                    <h3 className="text-3xl font-black text-gray-800">{seats.filter(s => s.occupants.length > 0).length} <span className="text-gray-300 text-lg font-bold">/ 117</span></h3>
+                                                <div className="flex-1">
+                                                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Seat Status</p>
+                                                    <div className="flex justify-between items-end">
+                                                        <div className="text-center">
+                                                            <div className="text-lg font-black text-teal-600">{seatStats.available}</div>
+                                                            <div className="text-[10px] text-gray-400 font-bold uppercase">Free</div>
+                                                        </div>
+                                                        <div className="w-px h-8 bg-gray-100"></div>
+                                                        <div className="text-center">
+                                                            <div className="text-lg font-black text-orange-500">{seatStats.partial}</div>
+                                                            <div className="text-[10px] text-gray-400 font-bold uppercase">Partial</div>
+                                                        </div>
+                                                        <div className="w-px h-8 bg-gray-100"></div>
+                                                        <div className="text-center">
+                                                            <div className="text-lg font-black text-red-500">{seatStats.occupied}</div>
+                                                            <div className="text-[10px] text-gray-400 font-bold uppercase">Full</div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="bg-white p-6 rounded-[2rem] shadow-[0_10px_30px_rgba(0,0,0,0.03)] border border-gray-100 flex items-center gap-5 hover:-translate-y-1 transition-transform">
@@ -730,31 +791,122 @@ const App: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        {/* --- EXPIRING SOON LIST (New) --- */}
+                                        {/* Export Button */}
+                                        <div className="mb-6 flex justify-end">
+                                            <button
+                                                onClick={() => {
+                                                    // Generate CSV
+                                                    const headers = ['ID', 'Name', 'Mobile', 'Email', 'Seat', 'Plan', 'Duration', 'Start Date', 'End Date', 'Amount Paid', 'Payment Mode', 'Assigned Slots', 'Active'];
+                                                    const rows = allStudents.map(s => [
+                                                        s.id,
+                                                        s.fullName,
+                                                        s.mobile,
+                                                        s.email,
+                                                        s.seatNumber,
+                                                        s.planType,
+                                                        s.duration,
+                                                        new Date(s.startDate).toLocaleDateString('en-GB'),
+                                                        new Date(s.endDate).toLocaleDateString('en-GB'),
+                                                        s.amountPaid,
+                                                        s.paymentMode || 'N/A',
+                                                        s.assignedSlots.join('; '),
+                                                        s.isActive ? 'Yes' : 'No'
+                                                    ]);
+
+                                                    const csvContent = [
+                                                        headers.join(','),
+                                                        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+                                                    ].join('\n');
+
+                                                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                                    const link = document.createElement('a');
+                                                    link.href = URL.createObjectURL(blob);
+                                                    link.download = `students_${new Date().toISOString().split('T')[0]}.csv`;
+                                                    link.click();
+                                                }}
+                                                className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg transition-colors"
+                                            >
+                                                <Download size={20} />
+                                                Export Students to CSV
+                                            </button>
+                                        </div>
+
+                                        {/* --- DETAIL EXPIRING SOON LIST (Chronological) --- */}
                                         {expiringStudents.length > 0 && (
                                             <div className="mb-10 bg-orange-50 border border-orange-100 rounded-[2.5rem] p-8">
-                                                <h3 className="text-xl font-black text-orange-800 mb-6 flex items-center gap-2"><AlertTriangle size={24} /> Expiring Soon (Next 5 Days)</h3>
-                                                <div className="space-y-3">
-                                                    {expiringStudents.map(s => (
-                                                        <div key={s.id} className="bg-white p-4 rounded-2xl flex items-center justify-between shadow-sm border border-orange-100">
-                                                            <div className="flex items-center gap-4">
-                                                                <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold">{s.seatNumber}</div>
-                                                                <div>
-                                                                    <p className="font-bold text-gray-800">{s.fullName}</p>
-                                                                    <p className="text-xs text-gray-500 font-medium">Expires: <span className="text-orange-600 font-bold">{s.endDate}</span></p>
-                                                                </div>
+                                                <h3 className="text-xl font-black text-orange-800 mb-6 flex items-center gap-2">
+                                                    <AlertTriangle size={24} /> Expiring Soon (Next 5 Days)
+                                                </h3>
+                                                <div className="space-y-6">
+                                                    {/* Group by Days */}
+                                                    {[0, 1, 2, 3, 4, 5].map(dayOffset => {
+                                                        const targetDate = new Date();
+                                                        targetDate.setDate(targetDate.getDate() + dayOffset);
+                                                        const targetDateStr = targetDate.toISOString().split('T')[0];
+
+                                                        const studentsInGroup = expiringStudents.filter(s => s.endDate === targetDateStr);
+
+                                                        if (studentsInGroup.length === 0) return null;
+
+                                                        const groupLabel = dayOffset === 0 ? 'Today' :
+                                                            dayOffset === 1 ? 'Tomorrow' :
+                                                                dayOffset === 2 ? 'Day After Tomorrow' :
+                                                                    new Date(targetDateStr).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'short' });
+
+                                                        const groupColor = dayOffset === 0 ? 'text-red-600 bg-red-100' :
+                                                            dayOffset === 1 ? 'text-orange-600 bg-orange-100' :
+                                                                'text-yellow-700 bg-yellow-100';
+
+                                                        return (
+                                                            <div key={dayOffset} className="space-y-3">
+                                                                <h4 className={`text-xs font-black uppercase tracking-widest px-2 py-1 rounded inline-block ${groupColor}`}>{groupLabel}</h4>
+                                                                {studentsInGroup.map(s => (
+                                                                    <div key={s.id} className="bg-white p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between shadow-sm border border-orange-100 gap-4">
+                                                                        <div className="flex items-center gap-4">
+                                                                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-100 to-red-50 flex items-center justify-center text-orange-700 font-black text-xl shadow-inner border border-orange-200">
+                                                                                {s.seatNumber}
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="font-bold text-gray-800 text-lg">{s.fullName}</p>
+                                                                                <div className="flex gap-2 text-xs font-bold mt-1">
+                                                                                    <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-500">{s.planType}</span>
+                                                                                    <span className="text-orange-600">{s.mobile}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {/* Contact Actions */}
+                                                                            <a
+                                                                                href={`https://wa.me/91${s.mobile}?text=Hi ${s.fullName}, your library subscription for Seat ${s.seatNumber} is expiring on ${s.endDate}. Please renew to continue access.`}
+                                                                                target="_blank"
+                                                                                rel="noreferrer"
+                                                                                className="p-3 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-colors border border-green-200"
+                                                                                title="Chat on WhatsApp"
+                                                                            >
+                                                                                <MessageCircle size={20} />
+                                                                            </a>
+                                                                            <a
+                                                                                href={`tel:${s.mobile}`}
+                                                                                className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-200"
+                                                                                title="Call Student"
+                                                                            >
+                                                                                <Phone size={20} />
+                                                                            </a>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    const seat = seats.find(st => st.id === s.seatNumber);
+                                                                                    if (seat) setSelectedSeat({ ...seat, occupants: [s] });
+                                                                                }}
+                                                                                className="px-6 py-3 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg shadow-gray-200 ml-2"
+                                                                            >
+                                                                                Renew Now
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
                                                             </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    const seat = seats.find(st => st.id === s.seatNumber);
-                                                                    if (seat) setSelectedSeat({ ...seat, occupants: [s] });
-                                                                }}
-                                                                className="px-4 py-2 bg-orange-100 text-orange-700 rounded-xl text-xs font-bold hover:bg-orange-200"
-                                                            >
-                                                                Renew
-                                                            </button>
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         )}
@@ -779,7 +931,15 @@ const App: React.FC = () => {
                                                 </div>
                                                 <div className="text-right">
                                                     <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Expires</p>
-                                                    <p className={`font-bold text-lg ${expiryAlert ? 'text-orange-500' : 'text-teal-600'}`}>{studentData.endDate}</p>
+                                                    <p className={`font-bold text-lg ${expiryAlert ? 'text-orange-500' : 'text-teal-600'}`}>
+                                                        {new Date(studentData.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                    </p>
+                                                    <p className="text-xs font-bold text-gray-500 mt-1">
+                                                        {(() => {
+                                                            const days = Math.ceil((new Date(studentData.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                                                            return days > 0 ? `in ${days} day${days > 1 ? 's' : ''}` : 'Expired';
+                                                        })()}
+                                                    </p>
                                                 </div>
                                             </div>
                                         </div>
@@ -807,27 +967,138 @@ const App: React.FC = () => {
                                             <p className="text-gray-400 font-medium mt-1 text-sm md:text-base">Real-time availability status</p>
                                         </div>
                                         <div className="flex flex-wrap gap-2 md:gap-4 text-[10px] md:text-xs font-bold bg-gray-50 p-3 rounded-2xl border border-gray-100 shadow-inner w-full md:w-auto">
-                                            <div className="flex items-center gap-2 px-2 text-gray-600"><div className="w-3 h-3 bg-white border-2 border-gray-200 rounded-md shadow-sm"></div> Available</div>
-                                            <div className="flex items-center gap-2 px-2 text-teal-700"><div className="w-3 h-3 bg-teal-100 border-2 border-teal-500 rounded-md shadow-sm"></div> Partial</div>
-                                            <div className="flex items-center gap-2 px-2 text-red-600"><div className="w-3 h-3 bg-red-50 border-2 border-red-500 rounded-md shadow-sm"></div> Occupied</div>
+                                            <div className="flex items-center gap-2 px-2 text-green-700"><div className="w-3 h-3 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-md shadow-sm"></div> Empty</div>
+                                            <div className="flex items-center gap-2 px-2 text-yellow-700"><div className="w-3 h-3 bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200 rounded-md shadow-sm"></div> 1 Student</div>
+                                            <div className="flex items-center gap-2 px-2 text-orange-700"><div className="w-3 h-3 bg-gradient-to-br from-orange-100 to-amber-100 border-2 border-orange-300 rounded-md shadow-sm"></div> 2 Students</div>
+                                            <div className="flex items-center gap-2 px-2 text-orange-800"><div className="w-3 h-3 bg-gradient-to-br from-orange-200 to-red-100 border-2 border-orange-400 rounded-md shadow-sm"></div> 3 Students</div>
+                                            <div className="flex items-center gap-2 px-2 text-red-600"><div className="w-3 h-3 bg-gradient-to-br from-red-100 to-rose-100 border-2 border-red-300 rounded-md shadow-sm"></div> Full (4)</div>
                                         </div>
                                     </div>
 
-                                    <SeatGrid
-                                        seats={seats}
-                                        onSeatClick={(seat) => {
-                                            // RESTRICTION: Students can only click their own seat
-                                            if (currentUser?.role === UserRole.STUDENT) {
-                                                if (studentData && studentData.seatNumber !== seat.id) {
-                                                    // Do nothing if clicking a seat that isn't theirs
-                                                    return;
-                                                }
-                                            }
-                                            setSelectedSeat(seat);
-                                        }}
-                                        userRole={currentUser.role}
-                                        currentUser={studentData}
-                                    />
+                                    {/* Search & Filter Section */}
+                                    {isAdmin && (
+                                        <div className="mb-6 space-y-3">
+                                            <div className="flex flex-col md:flex-row gap-3">
+                                                {/* Search Bar */}
+                                                <div className="flex-1 relative">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="🔍 Search by name, mobile, or seat number..."
+                                                        value={searchQuery}
+                                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                                        className="w-full p-3 pl-4 pr-10 bg-white border-2 border-gray-200 rounded-xl focus:border-teal-500 focus:ring-4 focus:ring-teal-100 outline-none transition-all text-sm font-medium"
+                                                    />
+                                                    {searchQuery && (
+                                                        <button
+                                                            onClick={() => setSearchQuery('')}
+                                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Filters */}
+                                                <div className="flex gap-2">
+                                                    <select
+                                                        value={filterPaymentStatus}
+                                                        onChange={(e) => setFilterPaymentStatus(e.target.value)}
+                                                        className="p-3 bg-white border-2 border-gray-200 rounded-xl focus:border-teal-500 outline-none text-xs font-bold text-gray-700"
+                                                    >
+                                                        <option value="ALL">All Payments</option>
+                                                        <option value="CASH">💰 Cash</option>
+                                                        <option value="ONLINE">💳 Online</option>
+                                                        <option value="PENDING">⏳ Pending</option>
+                                                    </select>
+
+                                                    <select
+                                                        value={filterPlanType}
+                                                        onChange={(e) => setFilterPlanType(e.target.value)}
+                                                        className="p-3 bg-white border-2 border-gray-200 rounded-xl focus:border-teal-500 outline-none text-xs font-bold text-gray-700"
+                                                    >
+                                                        <option value="ALL">All Plans</option>
+                                                        <option value="4 Hours">4 Hours</option>
+                                                        <option value="6 Hours">6 Hours</option>
+                                                        <option value="8 Hours">8 Hours</option>
+                                                        <option value="12 Hours">12 Hours</option>
+                                                    </select>
+
+                                                    <select
+                                                        value={filterActiveStatus}
+                                                        onChange={(e) => setFilterActiveStatus(e.target.value)}
+                                                        className="p-3 bg-white border-2 border-gray-200 rounded-xl focus:border-teal-500 outline-none text-xs font-bold text-gray-700"
+                                                    >
+                                                        <option value="ALL">All Status</option>
+                                                        <option value="ACTIVE">✅ Active</option>
+                                                        <option value="INACTIVE">❌ Inactive</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Seat Grid with Filtering */}
+                                    {(() => {
+                                        // Apply filters
+                                        const filteredSeats = seats.map(seat => {
+                                            const matchingOccupants = seat.occupants.filter(student => {
+                                                // Search filter
+                                                const matchesSearch = !searchQuery ||
+                                                    student.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                                    student.mobile.includes(searchQuery) ||
+                                                    seat.id.toString().includes(searchQuery);
+
+                                                // Payment filter
+                                                const matchesPayment = filterPaymentStatus === 'ALL' ||
+                                                    student.paymentMode === filterPaymentStatus;
+
+                                                // Plan type filter
+                                                const matchesPlan = filterPlanType === 'ALL' ||
+                                                    student.planType === filterPlanType;
+
+                                                // Active status filter
+                                                const matchesActiveStatus = filterActiveStatus === 'ALL' ||
+                                                    (filterActiveStatus === 'ACTIVE' && student.isActive) ||
+                                                    (filterActiveStatus === 'INACTIVE' && !student.isActive);
+
+                                                return matchesSearch && matchesPayment && matchesPlan && matchesActiveStatus;
+                                            });
+
+                                            return {
+                                                ...seat,
+                                                occupants: matchingOccupants,
+                                                isFiltered: matchingOccupants.length > 0 && (searchQuery || filterPaymentStatus !== 'ALL' || filterPlanType !== 'ALL' || filterActiveStatus !== 'ALL')
+                                            };
+                                        });
+
+                                        const hasActiveFilters = searchQuery || filterPaymentStatus !== 'ALL' || filterPlanType !== 'ALL' || filterActiveStatus !== 'ALL';
+                                        const matchCount = filteredSeats.filter(s => s.occupants.length > 0).length;
+
+                                        return (
+                                            <>
+                                                {hasActiveFilters && (
+                                                    <div className="mb-4 p-3 bg-teal-50 border border-teal-200 rounded-xl text-sm font-bold text-teal-700">
+                                                        Found {matchCount} seat(s) with matching students
+                                                    </div>
+                                                )}
+                                                <SeatGrid
+                                                    seats={hasActiveFilters ? filteredSeats : seats}
+                                                    onSeatClick={(seat) => {
+                                                        // RESTRICTION: Students can only click their own seat
+                                                        if (currentUser?.role === UserRole.STUDENT) {
+                                                            if (studentData && studentData.seatNumber !== seat.id) {
+                                                                // Do nothing if clicking a seat that isn't theirs
+                                                                return;
+                                                            }
+                                                        }
+                                                        setSelectedSeat(seat);
+                                                    }}
+                                                    userRole={currentUser.role}
+                                                    currentUser={studentData}
+                                                />
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             </>
                         )}
@@ -920,8 +1191,11 @@ const App: React.FC = () => {
                             <div className="bg-white rounded-[3rem] shadow-[0_25px_50px_rgba(0,0,0,0.05)] border border-gray-100 overflow-hidden">
 
                                 {/* Header Gradient */}
-                                <div className="h-48 bg-gradient-to-r from-teal-400 to-cyan-600 relative">
+                                <div className="h-48 bg-gradient-to-r from-teal-400 to-cyan-600 relative flex items-center justify-center overflow-hidden">
                                     <div className="absolute inset-0 bg-white/10 pattern-dots opacity-20"></div>
+                                    <h1 className="text-white/20 font-black text-6xl md:text-8xl tracking-tighter select-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap">
+                                        ASPIRANT LIBRARY
+                                    </h1>
                                 </div>
 
                                 <div className="px-6 md:px-10 pb-10">
@@ -939,20 +1213,6 @@ const App: React.FC = () => {
                                                     )}
                                                 </div>
                                             </div>
-                                            <input
-                                                type="file"
-                                                ref={fileInputRef}
-                                                className="hidden"
-                                                accept="image/*"
-                                                onChange={handleProfilePhotoUpdate}
-                                            />
-                                            <button
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="absolute bottom-2 right-2 p-3 bg-gray-900 text-white rounded-xl shadow-lg hover:bg-black transition-transform active:scale-95"
-                                                title="Update Photo"
-                                            >
-                                                <Camera size={20} />
-                                            </button>
                                         </div>
                                         <div className="flex-1 pb-2">
                                             <h1 className="text-3xl md:text-4xl font-black text-gray-900">{studentData.fullName}</h1>
@@ -1006,8 +1266,8 @@ const App: React.FC = () => {
                                                     <div className="bg-teal-500 h-full w-[40%]"></div>
                                                 </div>
                                                 <div className="flex justify-between text-xs font-bold text-teal-800">
-                                                    <span>Started: {studentData.startDate}</span>
-                                                    <span>Ends: {studentData.endDate}</span>
+                                                    <span>Started: {new Date(studentData.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                    <span className="text-red-600">Expires: {new Date(studentData.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                                 </div>
                                             </div>
 
@@ -1042,30 +1302,36 @@ const App: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div className="bg-white p-10 rounded-[2.5rem] shadow-lg border border-gray-100">
                                     <h3 className="text-xl font-black text-gray-800 mb-6 flex items-center gap-3"><Wifi className="text-blue-500" /> WiFi Configuration</h3>
-                                    <div className="mb-8 bg-blue-50/50 p-6 rounded-3xl border border-blue-100">
-                                        <form onSubmit={handleAddWifi} className="space-y-4">
-                                            <input
-                                                type="text"
-                                                placeholder="Network SSID"
-                                                className="w-full p-4 rounded-2xl border-0 bg-white shadow-sm ring-1 ring-blue-100 focus:ring-2 focus:ring-blue-400 outline-none font-medium"
-                                                value={newWifiSSID}
-                                                onChange={e => setNewWifiSSID(e.target.value)}
-                                            />
-                                            <div className="flex gap-3">
+
+                                    {/* Add Form */}
+                                    <div className="mb-8">
+                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Add New Network</h4>
+                                        <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100">
+                                            <form onSubmit={handleAddWifi} className="space-y-4">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Network SSID"
+                                                    className="w-full p-4 rounded-2xl border-0 bg-white shadow-sm ring-1 ring-blue-100 focus:ring-2 focus:ring-blue-400 outline-none font-medium"
+                                                    value={newWifiSSID}
+                                                    onChange={e => setNewWifiSSID(e.target.value)}
+                                                />
                                                 <input
                                                     type="text"
                                                     placeholder="Password"
-                                                    className="flex-1 p-4 rounded-2xl border-0 bg-white shadow-sm ring-1 ring-blue-100 focus:ring-2 focus:ring-blue-400 outline-none font-medium"
+                                                    className="w-full p-4 rounded-2xl border-0 bg-white shadow-sm ring-1 ring-blue-100 focus:ring-2 focus:ring-blue-400 outline-none font-medium"
                                                     value={newWifiPass}
                                                     onChange={e => setNewWifiPass(e.target.value)}
                                                 />
-                                                <button className="bg-blue-500 text-white px-6 rounded-2xl hover:bg-blue-600 transition-all shadow-lg shadow-blue-200 font-bold active:scale-95">
-                                                    <Plus size={24} />
+                                                <button className="w-full bg-blue-500 text-white p-4 rounded-2xl hover:bg-blue-600 transition-all shadow-lg shadow-blue-200 font-bold active:scale-95 flex items-center justify-center gap-2">
+                                                    <Plus size={20} /> Add Network
                                                 </button>
-                                            </div>
-                                        </form>
+                                            </form>
+                                        </div>
                                     </div>
+
+                                    {/* List */}
                                     <div className="space-y-4">
+                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Saved Networks ({wifiList.length})</h4>
                                         {wifiList.map(w => (
                                             <div key={w.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
                                                 <div>
@@ -1085,9 +1351,26 @@ const App: React.FC = () => {
                                         <h3 className="text-xl font-black text-gray-800 mb-6 flex items-center gap-3"><Bell className="text-red-500" /> Emergency Alert</h3>
                                         <div className="bg-red-50/50 p-6 rounded-3xl border border-red-100">
                                             <p className="text-sm text-red-800 mb-4 font-bold uppercase tracking-wide">Broadcast Message</p>
+                                            <div className="flex gap-4 mb-4">
+                                                <button
+                                                    onClick={() => setAnnouncementType('ALERT')}
+                                                    className={`flex-1 py-2 rounded-xl text-sm font-bold border-2 transition-all ${announcementType === 'ALERT' ? 'border-red-500 bg-red-50 text-red-600' : 'border-transparent bg-white text-gray-400'}`}
+                                                >
+                                                    <AlertTriangle size={16} className="inline mr-2" />
+                                                    Alert
+                                                </button>
+                                                <button
+                                                    onClick={() => setAnnouncementType('NOTIFICATION')}
+                                                    className={`flex-1 py-2 rounded-xl text-sm font-bold border-2 transition-all ${announcementType === 'NOTIFICATION' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-transparent bg-white text-gray-400'}`}
+                                                >
+                                                    <Bell size={16} className="inline mr-2" />
+                                                    Notification
+                                                </button>
+                                            </div>
+
                                             <textarea
-                                                className="w-full p-5 rounded-2xl border-0 bg-white shadow-sm ring-1 ring-red-100 focus:ring-2 focus:ring-red-400 outline-none h-32 mb-6 text-gray-800 placeholder-red-200 font-medium resize-none"
-                                                placeholder="Type critical announcement here..."
+                                                className={`w-full p-5 rounded-2xl border-0 bg-white shadow-sm ring-1 focus:ring-2 outline-none h-32 mb-6 text-gray-800 font-medium resize-none transition-all ${announcementType === 'ALERT' ? 'ring-red-100 focus:ring-red-400 placeholder-red-200' : 'ring-blue-100 focus:ring-blue-400 placeholder-blue-200'}`}
+                                                placeholder={announcementType === 'ALERT' ? "Type critical emergency alert..." : "Type general notification..."}
                                                 value={announcementMsg}
                                                 onChange={e => setAnnouncementMsg(e.target.value)}
                                             ></textarea>
@@ -1108,54 +1391,7 @@ const App: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="bg-white p-10 rounded-[2.5rem] shadow-lg border border-gray-100">
-                                        <h3 className="text-xl font-black text-gray-800 mb-6 flex items-center gap-3"><Database className="text-indigo-500" /> Database & System</h3>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <button
-                                                onClick={handleExportDB}
-                                                className="flex flex-col items-center justify-center p-6 bg-indigo-50 text-indigo-700 rounded-3xl border border-indigo-100 hover:bg-indigo-100 transition-all font-bold gap-2"
-                                            >
-                                                <Download size={24} />
-                                                <span>Backup Data</span>
-                                            </button>
 
-                                            <button
-                                                onClick={() => fileInputImportRef.current?.click()}
-                                                className="flex flex-col items-center justify-center p-6 bg-indigo-50 text-indigo-700 rounded-3xl border border-indigo-100 hover:bg-indigo-100 transition-all font-bold gap-2"
-                                            >
-                                                <Upload size={24} />
-                                                <span>Restore Data</span>
-                                            </button>
-                                            <input type="file" ref={fileInputImportRef} onChange={handleImportDB} accept=".json" className="hidden" />
-
-                                            <button
-                                                onClick={handleCleanupDB}
-                                                className="col-span-1 flex flex-col items-center justify-center p-6 bg-red-50 text-red-600 rounded-3xl border border-red-100 hover:bg-red-100 transition-all font-bold gap-2"
-                                            >
-                                                <Shield size={24} />
-                                                <span>Cleanup</span>
-                                            </button>
-
-                                            <button
-                                                onClick={handleSeedData}
-                                                className="col-span-1 flex flex-col items-center justify-center p-6 bg-green-50 text-green-700 rounded-3xl border border-green-100 hover:bg-green-100 transition-all font-bold gap-2"
-                                            >
-                                                <RefreshCw size={24} />
-                                                <span>Sample Data</span>
-                                            </button>
-
-                                            <button
-                                                onClick={handleOpenRawEditor}
-                                                className="col-span-2 flex items-center justify-center p-4 bg-gray-50 text-gray-600 rounded-2xl border border-gray-100 hover:bg-gray-100 transition-all font-bold gap-2 text-sm"
-                                            >
-                                                <Terminal size={18} /> Edit Raw Database (Direct Query)
-                                            </button>
-                                        </div>
-                                        <div className="mt-4 pt-4 border-t border-gray-50 text-center text-xs text-gray-400 font-mono space-y-1">
-                                            <p>API Endpoint: {CONFIG.API_BASE_URL}</p>
-                                            <p>Key: {CONFIG.API_KEY.slice(0, 10)}...{CONFIG.API_KEY.slice(-4)}</p>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1197,6 +1433,15 @@ const App: React.FC = () => {
                         setSelectedSeat(null);
                         forceUpdate();
                     }}
+                    readOnly={!isAdmin}
+                />
+            )}
+
+            {/* DOCUMENT VIEWER MODAL */}
+            {viewingDocStudent && (
+                <DocumentViewerModal
+                    student={viewingDocStudent}
+                    onClose={() => setViewingDocStudent(null)}
                 />
             )}
         </div>
