@@ -14,6 +14,7 @@ export const ApiService = {
 
     getAllStudents: async () => {
         const res = await fetch(`${API_URL}/students`);
+        if (!res.ok) throw new Error('Failed to fetch students');
         return res.json();
     },
 
@@ -39,11 +40,13 @@ export const ApiService = {
 
     getSeatsStatus: async () => {
         const res = await fetch(`${API_URL}/seats`);
+        if (!res.ok) throw new Error('Failed to fetch seats');
         return res.json();
     },
 
     getWifiNetworks: async () => {
         const res = await fetch(`${API_URL}/wifi`);
+        if (!res.ok) throw new Error('Failed to fetch wifi');
         return res.json();
     },
 
@@ -61,6 +64,7 @@ export const ApiService = {
 
     getAnnouncement: async () => {
         const res = await fetch(`${API_URL}/announcement`);
+        if (!res.ok) throw new Error('Failed to fetch announcement');
         return res.json();
     },
 
@@ -85,6 +89,7 @@ export const ApiService = {
 
     getTransactions: async () => {
         const res = await fetch(`${API_URL}/transactions`);
+        if (!res.ok) throw new Error('Failed to fetch transactions');
         return res.json();
     }
 };

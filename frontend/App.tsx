@@ -525,7 +525,7 @@ const App: React.FC = () => {
     const activeStudents = allStudents.filter(s => s.isActive).length;
 
     // Seat Stats Calculation
-    const seatStats = seats.reduce((acc, seat) => {
+    const seatStats = Array.isArray(seats) ? seats.reduce((acc, seat) => {
         const slotsTaken = new Set<string>();
         seat.occupants.forEach(s => s.assignedSlots.forEach(slot => slotsTaken.add(slot)));
 
@@ -533,7 +533,7 @@ const App: React.FC = () => {
         else if (slotsTaken.size >= 4) acc.occupied++;
         else acc.partial++;
         return acc;
-    }, { available: 0, partial: 0, occupied: 0 });
+    }, { available: 0, partial: 0, occupied: 0 }) : { available: 0, partial: 0, occupied: 0 };
 
     // Student Expiry Check
     let expiryAlert = null;
