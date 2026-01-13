@@ -18,7 +18,7 @@ import {
     LogOut, LayoutGrid, Users, DollarSign, Settings, Lock,
     TrendingUp, Wifi, Bell, Trash2, Plus, AlertTriangle,
     Menu, Search, ChevronRight, BookOpen, UserCircle, Eye, EyeOff, FileText, CheckCircle, Hand,
-    MapPin, Phone, Mail, User, Edit, Camera, Clock, Database, Download, Upload, Shield, Terminal, RefreshCw, X, Info, Smartphone, Key, MessageCircle
+    MapPin, Phone, Mail, User, Edit, Camera, Clock, Database, Download, Upload, Shield, Terminal, RefreshCw, X, Info, Smartphone, Key, MessageCircle, ArrowRight
 } from 'lucide-react';
 
 const SESSION_KEY = 'ASPIRANT_LIB_SESSION';
@@ -74,6 +74,10 @@ const App: React.FC = () => {
     const [seats, setSeats] = useState<Seat[]>([]);
     const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    // State for Multi-Student Support
+    const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+    const [isAddingStudent, setIsAddingStudent] = useState(false);
 
     // Search & Filter State
     const [searchQuery, setSearchQuery] = useState('');
@@ -1431,42 +1435,130 @@ const App: React.FC = () => {
                 </main>
             </div>
 
-            {/* MODAL */}
+            {/* MODAL OR OCCUPANT LIST */}
             {selectedSeat && (
-                <StudentModal
-                    seat={selectedSeat}
-                    existingStudent={selectedSeat.occupants.length > 0 && (isAdmin || (studentData?.seatNumber === selectedSeat.id)) ? selectedSeat.occupants[0] : undefined}
-                    initialData={pendingAdmissionRequest ? {
-                        fullName: pendingAdmissionRequest.fullName,
-                        mobile: pendingAdmissionRequest.mobile,
-                        email: pendingAdmissionRequest.email,
-                        address: pendingAdmissionRequest.address,
-                        planType: pendingAdmissionRequest.planType,
-                        duration: pendingAdmissionRequest.duration,
-                        lockerRequired: pendingAdmissionRequest.lockerRequired,
-                        assignedSlots: pendingAdmissionRequest.preferredSlots,
-                        photoUrl: pendingAdmissionRequest.photoUrl,
-                        idProofUrl: pendingAdmissionRequest.idProofUrl,
-                        idProofType: pendingAdmissionRequest.idProofType // Ensure this flows through
-                    } : undefined}
-                    onClose={() => {
-                        setSelectedSeat(null);
-                    }}
-                    onSave={() => {
-                        if (pendingAdmissionId) {
-                            MockService.deleteAdmissionRequest(pendingAdmissionId);
-                            setPendingAdmissionId(null);
-                        }
-                        setSelectedSeat(null);
-                        forceUpdate();
-                    }}
-                    onDelete={(id) => {
-                        MockService.deleteStudent(id);
-                        setSelectedSeat(null);
-                        forceUpdate();
-                    }}
-                    readOnly={!isAdmin}
-                />
+                (() => {
+                    // Logic: If seat has occupants AND we haven't actively chosen to add/edit, show list.
+                    // Otherwise (empty seat OR user clicked add/edit), show the Form (StudentModal).
+                    const showList = selectedSeat.occupants.length > 0 && !isAddingStudent && !editingStudentId;
+
+                    if (showList) {
+                        // --- OCCUPANT LIST MODAL ---
+                        return (
+                            <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border-4 border-white/50 animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="bg-gradient-to-r from-teal-500 to-cyan-600 p-6 text-white flex justify-between items-center">
+                                        <div>
+                                            <h2 className="text-2xl font-black">Seat #{selectedSeat.id}</h2>
+                                            <p className="text-teal-100 text-sm font-bold">{selectedSeat.occupants.length} Occupant(s)</p>
+                                        </div>
+                                        <button onClick={() => setSelectedSeat(null)} className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><X size={20} /></button>
+                                    </div>
+
+                                    <div className="p-6 space-y-4">
+                                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Current Occupants</h3>
+                                        <div className="space-y-3">
+                                            {selectedSeat.occupants.map((occ: any) => (
+                                                <div key={occ.id} className="flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-2xl hover:border-teal-200 transition-colors">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold">
+                                                            {occ.fullName.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-gray-800 text-sm">{occ.fullName}</p>
+                                                            <div className="flex gap-1 mt-1">
+                                                                {occ.assignedSlots.map((s: string) => (
+                                                                    <span key={s} className="text-[10px] font-bold bg-white border border-gray-200 px-1.5 py-0.5 rounded text-gray-500">{s}</span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setEditingStudentId(occ.id)}
+                                                        className="p-2 text-teal-600 hover:bg-teal-50 rounded-xl transition-colors font-bold text-xs flex items-center gap-1"
+                                                    >
+                                                        Edit <ArrowRight size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {(() => {
+                                            // Check if seat is fully booked (4 slots total)
+                                            // Assuming total slots is 4 (Morning, Afternoon, Evening, Night)
+                                            const allTaken = new Set(selectedSeat.occupants.flatMap((s: any) => s.assignedSlots));
+                                            const canAdd = allTaken.size < 4;
+
+                                            if (canAdd) {
+                                                return (
+                                                    <button
+                                                        onClick={() => setIsAddingStudent(true)}
+                                                        className="w-full py-4 mt-2 bg-gray-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-transform active:scale-95 shadow-xl"
+                                                    >
+                                                        <Plus size={20} /> Add Another Student
+                                                    </button>
+                                                );
+                                            } else {
+                                                return (
+                                                    <div className="p-4 bg-red-50 text-red-600 rounded-xl text-center text-xs font-bold border border-red-100">
+                                                        Seat Fully Occupied (All Slots Taken)
+                                                    </div>
+                                                );
+                                            }
+                                        })()}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    // --- STUDENT FORM MODAL ---
+                    return (
+                        <StudentModal
+                            seat={selectedSeat}
+                            existingStudent={editingStudentId ? selectedSeat.occupants.find((s: any) => s.id === editingStudentId) : undefined}
+                            // If adding new, we pass undefined existingStudent.
+                            // If seat was empty, editingStudentId is null, existingStudent is undefined. Correct.
+
+                            initialData={pendingAdmissionRequest ? {
+                                fullName: pendingAdmissionRequest.fullName,
+                                mobile: pendingAdmissionRequest.mobile,
+                                email: pendingAdmissionRequest.email,
+                                address: pendingAdmissionRequest.address,
+                                planType: pendingAdmissionRequest.planType,
+                                duration: pendingAdmissionRequest.duration,
+                                lockerRequired: pendingAdmissionRequest.lockerRequired,
+                                assignedSlots: pendingAdmissionRequest.preferredSlots,
+                                photoUrl: pendingAdmissionRequest.photoUrl,
+                                idProofUrl: pendingAdmissionRequest.idProofUrl,
+                                idProofType: pendingAdmissionRequest.idProofType
+                            } : undefined}
+                            onClose={() => {
+                                setSelectedSeat(null);
+                                setEditingStudentId(null);
+                                setIsAddingStudent(false);
+                            }}
+                            onSave={() => {
+                                if (pendingAdmissionId) {
+                                    MockService.deleteAdmissionRequest(pendingAdmissionId);
+                                    setPendingAdmissionId(null);
+                                }
+                                setSelectedSeat(null);
+                                setEditingStudentId(null);
+                                setIsAddingStudent(false);
+                                forceUpdate();
+                            }}
+                            onDelete={(id) => {
+                                MockService.deleteStudent(id);
+                                setSelectedSeat(null);
+                                setEditingStudentId(null);
+                                setIsAddingStudent(false);
+                                forceUpdate();
+                            }}
+                            readOnly={!isAdmin}
+                        />
+                    );
+                })()
             )}
 
             {/* DOCUMENT VIEWER MODAL */}

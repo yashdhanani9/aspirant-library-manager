@@ -7,6 +7,8 @@ import { MockService } from '../services/mockDatabase';
 interface AdmissionFormProps {
     onBack: () => void;
     onSubmitSuccess: () => void;
+    initialSeat?: string; // Pre-filled seat number
+    occupiedSlots?: string[]; // List of slot IDs that are already taken
 }
 
 const ID_TYPES = ["Aadhaar Card", "PAN Card", "Driving License", "Voter ID", "Passport", "College ID", "Other"];
@@ -38,12 +40,13 @@ const compressImage = (file: File): Promise<string> => {
     });
 };
 
-export const AdmissionForm: React.FC<AdmissionFormProps> = ({ onBack, onSubmitSuccess }) => {
+export const AdmissionForm: React.FC<AdmissionFormProps> = ({ onBack, onSubmitSuccess, initialSeat, occupiedSlots = [] }) => {
     const [formData, setFormData] = useState<Partial<AdmissionRequest>>({
         fullName: '',
         mobile: '',
         email: '',
         address: '',
+        seatNumber: initialSeat || '', // Set initial seat if provided
         planType: PlanType.SIX_HOURS,
         duration: PlanDuration.ONE_MONTH,
         lockerRequired: false,
@@ -340,18 +343,27 @@ export const AdmissionForm: React.FC<AdmissionFormProps> = ({ onBack, onSubmitSu
                         <div className="grid grid-cols-2 gap-2">
                             {TIME_SLOTS.map(slot => {
                                 const isSelected = formData.preferredSlots?.includes(slot.id);
+                                const isOccupied = occupiedSlots.includes(slot.id) || occupiedSlots.includes(slot.label); // Handle both ID and Label formats just in case
+
                                 return (
-                                    <button key={slot.id} type="button" onClick={() => handleSlotToggle(slot.id)}
+                                    <button
+                                        key={slot.id}
+                                        type="button"
+                                        onClick={() => !isOccupied && handleSlotToggle(slot.id)}
+                                        disabled={isOccupied}
                                         className={`p-3 rounded-xl border transition-all text-left relative overflow-hidden group
-                                    ${isSelected
-                                                ? 'border-teal-500 bg-teal-500 text-white shadow-md shadow-teal-200'
-                                                : 'border-white bg-white text-gray-500 hover:border-gray-200'
+                                    ${isOccupied
+                                                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                                                : isSelected
+                                                    ? 'border-teal-500 bg-teal-500 text-white shadow-md shadow-teal-200'
+                                                    : 'border-white bg-white text-gray-500 hover:border-gray-200'
                                             }
                                 `}
                                     >
                                         <span className="text-[10px] font-medium opacity-80 block">{slot.label}</span>
                                         <span className={`text-xs font-black block mt-0.5 ${isSelected ? 'text-white' : 'text-gray-800'}`}>{slot.time}</span>
                                         {isSelected && <Check size={14} className="absolute top-2 right-2 opacity-50" />}
+                                        {isOccupied && <span className="absolute top-2 right-2 text-[8px] font-bold text-red-400 bg-red-50 px-1 rounded">SUB</span>}
                                     </button>
                                 );
                             })}
