@@ -1,4 +1,5 @@
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+console.log('🔌 Configured API URL:', API_URL); // Log for debugging
 
 export const ApiService = {
     login: async (mobile, password) => {

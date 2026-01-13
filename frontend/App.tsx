@@ -51,6 +51,24 @@ const compressImage = (file: File): Promise<string> => {
     });
 };
 
+// Extracted Component to prevent re-renders
+const SidebarItem = React.memo(({ id, label, icon: Icon, active, badge, onClick }: any) => (
+    <button
+        onClick={onClick}
+        className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all duration-300 mb-2 font-bold ${active
+            ? 'bg-gradient-to-r from-teal-100 to-cyan-50 text-teal-700 shadow-sm translate-x-1'
+            : 'text-gray-500 hover:bg-gray-50 hover:text-teal-600'
+            }`}
+    >
+        <Icon size={22} className={active ? "text-teal-600 drop-shadow-sm" : ""} />
+        <span>{label}</span>
+        {badge > 0 && (
+            <span className="ml-auto bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{badge}</span>
+        )}
+        {active && !badge && <ChevronRight size={18} className="ml-auto text-teal-500" />}
+    </button>
+));
+
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<{ role: UserRole; user: Student | null } | null>(null);
     const [seats, setSeats] = useState<Seat[]>([]);
@@ -150,32 +168,33 @@ const App: React.FC = () => {
         }
     }, []);
 
+    const [connectionError, setConnectionError] = useState(false);
+
     useEffect(() => {
         const loadData = async () => {
+            setConnectionError(false); // Reset error on retry
             try {
-                const seatsData = await ApiService.getSeatsStatus();
+                const [seatsData, wifiData, annData, studData, txData] = await Promise.all([
+                    ApiService.getSeatsStatus(),
+                    ApiService.getWifiNetworks(),
+                    ApiService.getAnnouncement(),
+                    ApiService.getAllStudents(),
+                    ApiService.getTransactions()
+                ]);
+
                 setSeats(seatsData);
-
-                const wifiData = await ApiService.getWifiNetworks();
                 setWifiList(wifiData);
-
-                const annData = await ApiService.getAnnouncement();
                 setGlobalAnnouncement(annData);
                 if (annData.message) setAnnouncementMsg(annData.message);
-
-                const studData = await ApiService.getAllStudents();
                 setStudentsList(studData);
-
-                const txData = await ApiService.getTransactions();
                 setTransactionsList(txData);
-
             } catch (e) {
                 console.error("Failed to load live data", e);
+                setConnectionError(true);
             }
         };
         loadData();
     }, [refreshTrigger, currentUser]);
-
 
     // Install Prompt Listener
     useEffect(() => {
@@ -516,23 +535,7 @@ const App: React.FC = () => {
     // Pending Admission Object
     const pendingAdmissionRequest = pendingAdmissionId ? admissionRequests.find(r => r.id === pendingAdmissionId) : null;
 
-    // --- SIDEBAR COMPONENT ---
-    const SidebarItem = ({ id, label, icon: Icon, active, badge, onClick }: any) => (
-        <button
-            onClick={onClick || (() => handleNavClick(id))}
-            className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all duration-300 mb-2 font-bold ${active
-                ? 'bg-gradient-to-r from-teal-100 to-cyan-50 text-teal-700 shadow-sm translate-x-1'
-                : 'text-gray-500 hover:bg-gray-50 hover:text-teal-600'
-                }`}
-        >
-            <Icon size={22} className={active ? "text-teal-600 drop-shadow-sm" : ""} />
-            <span>{label}</span>
-            {badge > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{badge}</span>
-            )}
-            {active && !badge && <ChevronRight size={18} className="ml-auto text-teal-500" />}
-        </button>
-    );
+    // --- SIDEBAR COMPONENT REMOVED (Hoisted) ---
 
     return (
         <div className="flex h-screen bg-[#F8FAFC] font-sans overflow-hidden">
@@ -566,24 +569,25 @@ const App: React.FC = () => {
 
                         <nav className="space-y-1">
                             <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 px-4">Main Menu</div>
-                            <SidebarItem id="DASHBOARD" label="Dashboard" icon={LayoutGrid} active={activeTab === 'DASHBOARD'} />
+                            <SidebarItem id="DASHBOARD" label="Dashboard" icon={LayoutGrid} active={activeTab === 'DASHBOARD'} onClick={() => handleNavClick('DASHBOARD')} />
 
                             {isAdmin ? (
                                 <>
-                                    <SidebarItem id="STUDENTS" label="Students" icon={Users} active={activeTab === 'STUDENTS'} />
+                                    <SidebarItem id="STUDENTS" label="Students" icon={Users} active={activeTab === 'STUDENTS'} onClick={() => handleNavClick('STUDENTS')} />
                                     <SidebarItem
                                         id="ADMISSIONS"
                                         label="Admissions"
                                         icon={FileText}
                                         active={activeTab === 'ADMISSIONS'}
                                         badge={admissionRequests.length}
+                                        onClick={() => handleNavClick('ADMISSIONS')}
                                     />
-                                    <SidebarItem id="REVENUE" label="Finance" icon={TrendingUp} active={activeTab === 'REVENUE'} />
-                                    <SidebarItem id="SETTINGS" label="Settings" icon={Settings} active={activeTab === 'SETTINGS'} />
+                                    <SidebarItem id="REVENUE" label="Finance" icon={TrendingUp} active={activeTab === 'REVENUE'} onClick={() => handleNavClick('REVENUE')} />
+                                    <SidebarItem id="SETTINGS" label="Settings" icon={Settings} active={activeTab === 'SETTINGS'} onClick={() => handleNavClick('SETTINGS')} />
                                 </>
                             ) : (
                                 // Student Links
-                                <SidebarItem id="PROFILE" label="My Profile" icon={UserCircle} active={activeTab === 'PROFILE'} />
+                                <SidebarItem id="PROFILE" label="My Profile" icon={UserCircle} active={activeTab === 'PROFILE'} onClick={() => handleNavClick('PROFILE')} />
                             )}
 
                             {/* Install Button (Visible only if installable) */}
@@ -654,6 +658,19 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 </header>
+
+                {/* CONNECTION ERROR BANNER */}
+                {connectionError && (
+                    <div className="bg-red-500 text-white px-4 py-3 text-center font-bold relative z-50 flex items-center justify-center gap-4">
+                        <span>⚠️ Unable to connect to Server. It might be waking up...</span>
+                        <button
+                            onClick={() => setRefreshTrigger(p => p + 1)}
+                            className="bg-white text-red-600 px-3 py-1 rounded-lg text-sm hover:bg-gray-100 transition-colors"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
 
                 {/* SCROLL AREA */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8">
