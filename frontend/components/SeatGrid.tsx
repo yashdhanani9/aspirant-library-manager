@@ -43,28 +43,72 @@ export const SeatGrid: React.FC<SeatGridProps> = ({ seats, onSeatClick, userRole
     } else if (isFull) {
       // Full - Red (No availability)
       style.className += " bg-gradient-to-br from-red-100 to-rose-100 border-2 border-red-300 text-red-600 shadow-[0_2px_0_0_rgb(252,165,165)] font-bold";
+      const allSlots = ['S1', 'S2', 'S3', 'S4'];
+      style.label = (
+        <div className="absolute -bottom-2 bg-white px-1 py-0.5 rounded-md border border-red-200 shadow-sm flex gap-0.5 z-10 opacity-75">
+          {allSlots.map((sid) => (
+            <div key={sid} className="w-2 h-2 rounded-[2px] bg-red-400" />
+          ))}
+        </div>
+      );
     } else if (occupancy === 1) {
       // 1 Student - Light Yellow
       style.className += " bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200 text-yellow-700 shadow-[0_4px_0_0_rgb(253,224,71)] active:shadow-none active:translate-y-[4px] hover:from-yellow-100 hover:to-amber-100";
+      // Visual Slot Bar
+      const allSlots = ['S1', 'S2', 'S3', 'S4']; // Fixed order: M, A, E, N
       style.label = (
-        <div className="absolute -bottom-2 bg-white px-1.5 py-0.5 rounded-full border border-yellow-200 shadow-sm text-[8px] font-bold text-yellow-600 tracking-widest uppercase flex gap-0.5 z-10">
-          {availableSlots.join(' ')}
+        <div className="absolute -bottom-2 bg-white px-1 py-0.5 rounded-md border border-gray-200 shadow-sm flex gap-0.5 z-10">
+          {allSlots.map((sid, idx) => {
+            const isTaken = takenSlots.has(sid);
+            return (
+              <div
+                key={sid}
+                className={`w-2 h-2 rounded-[2px] ${isTaken
+                  ? 'bg-teal-500'
+                  : 'bg-gray-100 border border-gray-200'}`}
+                title={isTaken ? 'Occupied' : 'Available'}
+              />
+            );
+          })}
         </div>
       );
     } else if (occupancy === 2) {
       // 2 Students - Orange
       style.className += " bg-gradient-to-br from-orange-100 to-amber-100 border-2 border-orange-300 text-orange-700 shadow-[0_4px_0_0_rgb(251,146,60)] active:shadow-none active:translate-y-[4px] hover:from-orange-200 hover:to-amber-200";
+      // Visual Slot Bar (Duplicate logic for consistency, cleaner than text)
+      const allSlots = ['S1', 'S2', 'S3', 'S4'];
       style.label = (
-        <div className="absolute -bottom-2 bg-white px-1.5 py-0.5 rounded-full border border-orange-300 shadow-sm text-[8px] font-bold text-orange-600 tracking-widest uppercase flex gap-0.5 z-10">
-          {availableSlots.join(' ')}
+        <div className="absolute -bottom-2 bg-white px-1 py-0.5 rounded-md border border-orange-200 shadow-sm flex gap-0.5 z-10">
+          {allSlots.map((sid) => {
+            const isTaken = takenSlots.has(sid);
+            return (
+              <div
+                key={sid}
+                className={`w-2 h-2 rounded-[2px] ${isTaken
+                  ? 'bg-orange-500'
+                  : 'bg-gray-100 border border-gray-200'}`}
+              />
+            );
+          })}
         </div>
       );
     } else if (occupancy === 3) {
       // 3 Students - Deep Orange/Light Red
       style.className += " bg-gradient-to-br from-orange-200 to-red-100 border-2 border-orange-400 text-orange-800 shadow-[0_3px_0_0_rgb(251,146,60)] active:shadow-none active:translate-y-[3px] hover:from-orange-300 hover:to-red-200";
+      const allSlots = ['S1', 'S2', 'S3', 'S4'];
       style.label = (
-        <div className="absolute -bottom-2 bg-white px-1.5 py-0.5 rounded-full border border-orange-400 shadow-sm text-[8px] font-bold text-orange-700 tracking-widest uppercase flex gap-0.5 z-10">
-          {availableSlots.join(' ')}
+        <div className="absolute -bottom-2 bg-white px-1 py-0.5 rounded-md border border-orange-300 shadow-sm flex gap-0.5 z-10">
+          {allSlots.map((sid) => {
+            const isTaken = takenSlots.has(sid);
+            return (
+              <div
+                key={sid}
+                className={`w-2 h-2 rounded-[2px] ${isTaken
+                  ? 'bg-orange-600'
+                  : 'bg-gray-100 border border-gray-200'}`}
+              />
+            );
+          })}
         </div>
       );
     }
