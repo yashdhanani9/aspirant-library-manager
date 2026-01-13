@@ -169,10 +169,12 @@ const App: React.FC = () => {
     }, []);
 
     const [connectionError, setConnectionError] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const loadData = async () => {
-            setConnectionError(false); // Reset error on retry
+            setConnectionError(false);
+            setIsLoading(true);
             try {
                 const [seatsData, wifiData, annData, studData, txData] = await Promise.all([
                     ApiService.getSeatsStatus(),
@@ -191,6 +193,8 @@ const App: React.FC = () => {
             } catch (e) {
                 console.error("Failed to load live data", e);
                 setConnectionError(true);
+            } finally {
+                setIsLoading(false);
             }
         };
         loadData();
@@ -382,6 +386,17 @@ const App: React.FC = () => {
             setIsSidebarOpen(false);
         }
     };
+
+    // --- LOADING SCREEN ---
+    if (isLoading && !currentUser) { // Only show full loader if not logged in or refreshing initial data
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC]">
+                <div className="w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <h2 className="text-xl font-bold text-gray-600">Loading Library...</h2>
+                {connectionError && <p className="text-red-500 text-sm mt-2">Connecting to backend...</p>}
+            </div>
+        );
+    }
 
     // --- LOGIN SCREEN (Turquoise/Aquamarine Theme) ---
     if (!currentUser) {
