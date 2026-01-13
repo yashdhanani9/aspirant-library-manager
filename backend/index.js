@@ -9,12 +9,40 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors({
-    origin: ['https://aspirant-library.vercel.app', 'http://localhost:3000'],
+    origin: ['https://aspirant-library.vercel.app', 'http://localhost:5173'], // Explicitly allow frontend
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
+
+// Test DB Connection Route
+app.get('/api/test-db', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        const result = await client.query('SELECT NOW()');
+        client.release();
+        res.json({
+            status: 'success',
+            message: 'Database connection working',
+            time: result.rows[0].now,
+            env_db_set: !!process.env.DATABASE_URL
+        });
+    } catch (err) {
+        console.error('DB Test Failed:', err);
+        res.status(500).json({
+            status: 'error',
+            message: 'Database connection failed',
+            error: err.message,
+            env_db_set: !!process.env.DATABASE_URL
+        });
+    }
+});
 app.use(express.json());
+
+// Health Check
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
 
 // Cloudinary Config
 cloudinary.config({
@@ -31,6 +59,10 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
+
+pool.connect()
+    .then(() => console.log('✅ Database Connected Successfully'))
+    .catch(err => console.error('❌ Database Connection Failed:', err));
 
 // Helper: Snake to Camel Case
 const snakeToCamel = (s) => {
